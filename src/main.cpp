@@ -1,28 +1,3 @@
-// #include <Arduino.h>
-
-// void setup() {
-//   // put your setup code here, to run once:
-// }
-
-// void loop() {
-//   // put your main code here, to run repeatedly:
-// }
-
-/*********
-  Rui Santos
-  Complete project details at https://RandomNerdTutorials.com/esp32-cam-take-photo-save-microsd-card
-
-  IMPORTANT!!!
-   - Select Board "AI Thinker ESP32-CAM"
-   - GPIO 0 must be connected to GND to upload a sketch
-   - After connecting GPIO 0 to GND, press the ESP32-CAM on-board RESET button to put your board in flashing mode
-
-  Permission is hereby granted, free of charge, to any person obtaining a copy
-  of this software and associated documentation files.
-  The above copyright notice and this permission notice shall be included in all
-  copies or substantial portions of the Software.
-*********/
-
 #include "esp_camera.h"
 #include "Arduino.h"
 #include "FS.h"               // SD Card ESP32
@@ -31,6 +6,12 @@
 #include "soc/rtc_cntl_reg.h" // Disable brownour problems
 #include "driver/rtc_io.h"
 #include <EEPROM.h> // read and write from flash memory
+#include <WiFi.h>
+
+#include "predict.h"
+
+#include <TFT_eSPI.h> // Hardware-specific library
+#include <SPI.h>
 
 // define the number of bytes you want to access
 #define EEPROM_SIZE 4
@@ -54,6 +35,13 @@
 #define HREF_GPIO_NUM 23
 #define PCLK_GPIO_NUM 22
 
+// enough to test if it fits in flash...
+
+// WiFiClient espClient;
+TFT_eSPI tft = TFT_eSPI();
+
+// But move these elsewhere
+
 long pictureNumber = 0;
 
 void setup()
@@ -61,8 +49,9 @@ void setup()
   WRITE_PERI_REG(RTC_CNTL_BROWN_OUT_REG, 0); //disable brownout detector
 
   Serial.begin(115200);
+  delay(1000);
   //Serial.setDebugOutput(true);
-  //Serial.println();
+  // Serial.println();
 
   camera_config_t config;
   config.ledc_channel = LEDC_CHANNEL_0;
@@ -84,22 +73,13 @@ void setup()
   config.pin_pwdn = PWDN_GPIO_NUM;
   config.pin_reset = RESET_GPIO_NUM;
   config.xclk_freq_hz = 20000000;
-  config.pixel_format = PIXFORMAT_JPEG;
+  config.pixel_format = PIXFORMAT_RGB888;
 
-  if (psramFound())
-  {
-    config.frame_size = FRAMESIZE_UXGA; // FRAMESIZE_ + QVGA|CIF|VGA|SVGA|XGA|SXGA|UXGA
-    config.jpeg_quality = 10;
-    config.fb_count = 2;
-  }
-  else
-  {
-    config.frame_size = FRAMESIZE_SVGA;
-    config.jpeg_quality = 12;
-    config.fb_count = 1;
-  }
+  config.frame_size = FRAMESIZE_QQVGA;
+  config.fb_count = 1;
 
   // Init Camera
+  Serial.println("init camera?");
   esp_err_t err = esp_camera_init(&config);
   if (err != ESP_OK)
   {
@@ -107,20 +87,26 @@ void setup()
     return;
   }
 
-  //Serial.println("Starting SD Card");
-  if (!SD_MMC.begin("/sdcard", true))
-  {
-    Serial.println("SD Card Mount Failed");
-    // no SD Card - go into prediciton & display mode
-    return;
-  }
+  setupModel();
 
-  uint8_t cardType = SD_MMC.cardType();
-  if (cardType == CARD_NONE)
-  {
-    Serial.println("No SD Card attached");
-    return;
-  }
+  tft.begin();
+  tft.setRotation(3);
+  Serial.println("tft begun?");
+
+  //Serial.println("Starting SD Card");
+  // if (!SD_MMC.begin("/sdcard", true))
+  // {
+  //   Serial.println("SD Card Mount Failed");
+  //   // no SD Card - go into prediciton & display mode
+  //   return;
+  // }
+
+  // uint8_t cardType = SD_MMC.cardType();
+  // if (cardType == CARD_NONE)
+  // {
+  //   Serial.println("No SD Card attached");
+  //   return;
+  // }
 
   // camera_fb_t *fb = NULL;
 
@@ -205,8 +191,38 @@ void takeAndSavePicture()
   esp_camera_fb_return(fb);
 }
 
+void takeAndPredictPicture()
+{
+  camera_fb_t *fb = NULL;
+
+  // Take Picture with Camera
+  fb = esp_camera_fb_get();
+  if (!fb)
+  {
+    Serial.println("Camera capture failed");
+    return;
+  }
+
+  drawer_predictions prediction = runPrediction(fb);
+
+  esp_camera_fb_return(fb);
+}
+
 void loop()
 {
-  takeAndSavePicture();
+  // takeAndSavePicture();
+
+  takeAndPredictPicture();
+
+  //Measure time to clear screen
+  //drawTime = millis();
+  tft.fillScreen(TFT_RED);
+  //drawTime = millis() - drawTime;
+  tft.setTextColor(TFT_WHITE, TFT_BLACK);
+  //tft.drawNumber(drawTime, 10, 100, 4);
+  //delay(1000);
+
+  tft.drawNumber(42, 100, 80, 1);
+
   delay(1000);
 }
