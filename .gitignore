@@ -4,3 +4,4 @@
 .vscode/launch.json
 .vscode/ipch
 dataset_images
+dataset_images_uncropped

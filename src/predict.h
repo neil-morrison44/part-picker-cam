@@ -46,4 +46,4 @@ struct drawer_predictions
   float drawer_39;
 };
 
-drawer_predictions runPrediction(camera_fb_t *framebuffer);
+// drawer_predictions runPrediction(camera_fb_t *framebuffer);

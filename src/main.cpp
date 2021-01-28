@@ -203,7 +203,7 @@ void takeAndPredictPicture()
     return;
   }
 
-  drawer_predictions prediction = runPrediction(fb);
+  // drawer_predictions prediction = runPrediction(fb);
 
   esp_camera_fb_return(fb);
 }
