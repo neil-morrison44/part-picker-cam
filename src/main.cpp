@@ -40,6 +40,8 @@
 // WiFiClient espClient;
 TFT_eSPI tft = TFT_eSPI();
 
+static uint16_t tftBuffer[160 * 60] = {0};
+
 // But move these elsewhere
 
 long pictureNumber = 0;
@@ -91,6 +93,7 @@ void setup()
 
   tft.begin();
   tft.setRotation(3);
+  tft.setSwapBytes(true);
   Serial.println("tft begun?");
 
   //Serial.println("Starting SD Card");
@@ -191,7 +194,7 @@ void takeAndSavePicture()
   esp_camera_fb_return(fb);
 }
 
-void takeAndPredictPicture()
+float *takeAndPredictPicture()
 {
   camera_fb_t *fb = NULL;
 
@@ -200,29 +203,54 @@ void takeAndPredictPicture()
   if (!fb)
   {
     Serial.println("Camera capture failed");
-    return;
+    return {0};
   }
 
-  // drawer_predictions prediction = runPrediction(fb);
+  float *results = runPrediction(fb->buf, fb->len);
+  Serial.println("I've got back a prediction");
+
+  writePredictionFrameTo16BitBuffer(fb->buf, fb->len, tftBuffer);
+
+  Serial.println("has written the to the tftBuffer");
+  // for (int i = 0; i < 9600; i++)
+  // {
+  //   tftBuffer[i] = 0xF7BE;
+  // }
+
+  tft.pushImage(120 - 80, 0, 160, 60, tftBuffer);
 
   esp_camera_fb_return(fb);
+  return results;
 }
 
 void loop()
 {
   // takeAndSavePicture();
 
-  takeAndPredictPicture();
-
   //Measure time to clear screen
   //drawTime = millis();
-  tft.fillScreen(TFT_RED);
+  tft.fillScreen(TFT_BLACK);
   //drawTime = millis() - drawTime;
   tft.setTextColor(TFT_WHITE, TFT_BLACK);
   //tft.drawNumber(drawTime, 10, 100, 4);
   //delay(1000);
 
-  tft.drawNumber(42, 100, 80, 1);
+  float *results = takeAndPredictPicture();
 
-  delay(1000);
+  int most_likely_drawer = -1;
+  float max_value_so_far = 0.01f;
+
+  for (int i = 0; i < 40; i++)
+  {
+    /* code */
+    if (results[i] > max_value_so_far)
+    {
+      max_value_so_far = results[i];
+      most_likely_drawer = i;
+    }
+  }
+  Serial.println("most_likely_drawer");
+  Serial.println(most_likely_drawer);
+  tft.drawNumber(most_likely_drawer, 100, 80, 1);
+  delay(10000);
 }
