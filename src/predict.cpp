@@ -10,9 +10,9 @@
 #include "tensorflow/lite/micro/micro_mutable_op_resolver.h"
 #include "tensorflow/lite/version.h"
 
-#define NUMBER_OF_INPUTS 160 * 60 * 3
+#define NUMBER_OF_INPUTS 160 * 120 * 3
 #define NUMBER_OF_OUTPUTS 40
-#define TENSOR_ARENA_SIZE 160 * 1024
+#define TENSOR_ARENA_SIZE 288 * 1024
 
 tflite::ErrorReporter *error_reporter = nullptr;
 const tflite::Model *model = nullptr;
@@ -107,20 +107,14 @@ float *runPrediction(uint8_t *framebuffer, size_t length)
   TfLiteStatus tflite_status;
   static float prediction[NUMBER_OF_OUTPUTS] = {0};
 
-  // loop over framebuffer and convert from rgb565 to floaty input thing
-
-  // ml.predict(input, prediction);
-  Serial.println("RAWIMAGE:");
-
   int redSum = 0;
   int blueSum = 0;
   int greenSum = 0;
 
-  for (size_t i = (length / 2); i < length; i++)
+  for (size_t i = 0; i < length; i++)
   {
-    // only the bottom half of the image
-
-    model_input->data.f[i - (length / 2)] = (1.0f / 255) * framebuffer[i];
+    model_input->data.f[i] = (1.0f / 255) * framebuffer[i];
+    //model_input->data.f[i] = framebuffer[i];
     if (i % 3 == 0)
     {
       redSum += framebuffer[i];
@@ -128,18 +122,9 @@ float *runPrediction(uint8_t *framebuffer, size_t length)
       greenSum += framebuffer[i + 2];
     }
   }
-  Serial.println("AverageColor: ");
-  printf("rgb(%d, %d, %d)\n", redSum / (160 * 60), blueSum / (160 * 60), greenSum / (160 * 60));
-  Serial.println("");
-  Serial.println("I think I've built an input");
-  Serial.println("");
-  for (size_t i = 0; i < 20; i++)
-  {
-    Serial.print(model_input->data.f[i]);
-    Serial.print(", ");
-  }
-  Serial.println("");
-
+  // Serial.println("AverageColor: ");
+  // printf("rgb(%d, %d, %d)\n", redSum / (160 * 60), blueSum / (160 * 60), greenSum / (160 * 60));
+  // Serial.println("");
   tflite_status = interpreter->Invoke();
   if (tflite_status != kTfLiteOk)
   {
@@ -175,15 +160,6 @@ void writePredictionFrameTo16BitBuffer(uint8_t *framebuffer, size_t length, uint
       int b = framebuffer[i + 2];
       if (outputPixelIndex < 9600)
       {
-        if (r > 128)
-        {
-          output_buffer[outputPixelIndex] = 0xFFFF;
-        }
-        else
-        {
-          output_buffer[outputPixelIndex] = 0x0000;
-        }
-
         output_buffer[outputPixelIndex] = rgb888torgb565(r, g, b);
       }
       else

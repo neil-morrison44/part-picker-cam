@@ -5,3 +5,4 @@
 .vscode/ipch
 dataset_images
 dataset_images_uncropped
+dataset_images_all_small

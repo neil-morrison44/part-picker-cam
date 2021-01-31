@@ -9,6 +9,7 @@
 #include <WiFi.h>
 
 #include "predict.h"
+#include "ui.h"
 
 #include <TFT_eSPI.h> // Hardware-specific library
 #include <SPI.h>
@@ -42,9 +43,14 @@ TFT_eSPI tft = TFT_eSPI();
 
 static uint16_t tftBuffer[160 * 60] = {0};
 
+uint8_t *bmp_buf = nullptr;
+size_t bmp_buf_len = 0;
+
 // But move these elsewhere
 
 long pictureNumber = 0;
+
+bool hasSDCard = false;
 
 void setup()
 {
@@ -54,6 +60,20 @@ void setup()
   delay(1000);
   //Serial.setDebugOutput(true);
   // Serial.println();
+
+  Serial.println("Starting SD Card");
+  if (SD_MMC.begin("/sdcard", true))
+  {
+    Serial.println("SD Card Mounted");
+    // no SD Card - go into prediciton & display mode
+    hasSDCard = true;
+  }
+  else
+  {
+    Serial.println("No SD Card detected");
+    hasSDCard = false;
+    delay(1000);
+  }
 
   camera_config_t config;
   config.ledc_channel = LEDC_CHANNEL_0;
@@ -78,7 +98,7 @@ void setup()
   config.pixel_format = PIXFORMAT_RGB888;
 
   config.frame_size = FRAMESIZE_QQVGA;
-  config.fb_count = 1;
+  config.fb_count = hasSDCard ? 2 : 1;
 
   // Init Camera
   Serial.println("init camera?");
@@ -89,73 +109,13 @@ void setup()
     return;
   }
 
-  setupModel();
-
-  tft.begin();
-  tft.setRotation(3);
-  tft.setSwapBytes(true);
-  Serial.println("tft begun?");
-
-  //Serial.println("Starting SD Card");
-  // if (!SD_MMC.begin("/sdcard", true))
-  // {
-  //   Serial.println("SD Card Mount Failed");
-  //   // no SD Card - go into prediciton & display mode
-  //   return;
-  // }
-
-  // uint8_t cardType = SD_MMC.cardType();
-  // if (cardType == CARD_NONE)
-  // {
-  //   Serial.println("No SD Card attached");
-  //   return;
-  // }
-
-  // camera_fb_t *fb = NULL;
-
-  // // Take Picture with Camera
-  // fb = esp_camera_fb_get();
-  // if (!fb)
-  // {
-  //   Serial.println("Camera capture failed");
-  //   return;
-  // }
-  // initialize EEPROM with predefined size
-  EEPROM.begin(EEPROM_SIZE);
-  EEPROM.writeLong(0, 0l);
-  // pictureNumber = EEPROM.readLong(0) + 1;
-
-  // // Path where new picture will be saved in SD Card
-  // String path = "/picture" + String(pictureNumber) + ".jpg";
-
-  // fs::FS &fs = SD_MMC;
-  // Serial.printf("Picture file name: %s\n", path.c_str());
-
-  // File file = fs.open(path.c_str(), FILE_WRITE);
-  // if (!file)
-  // {
-  //   Serial.println("Failed to open file in writing mode");
-  // }
-  // else
-  // {
-  //   file.write(fb->buf, fb->len); // payload (image), payload length
-  //   Serial.printf("Saved file to path: %s\n", path.c_str());
-  //   EEPROM.writeLong(0, pictureNumber);
-  //   EEPROM.commit();
-  // }
-  // file.close();
-  // esp_camera_fb_return(fb);
-
-  // // Turns off the ESP32-CAM white on-board LED (flash)  connected to GPIO 4
-  // pinMode(4, OUTPUT);
-  // digitalWrite(4, LOW);
-  // rtc_gpio_hold_en(GPIO_NUM_4);
-
-  // delay(2000);
-  // Serial.println("Going to sleep now");
-  // delay(2000);
-  // esp_deep_sleep_start();
-  // Serial.println("This will never be printed");
+  if (!hasSDCard)
+  {
+    setupModel();
+    tft.begin();
+    tft.setRotation(3);
+    tft.setSwapBytes(true);
+  }
 }
 
 void takeAndSavePicture()
@@ -169,11 +129,13 @@ void takeAndSavePicture()
     Serial.println("Camera capture failed");
     return;
   }
-  // initialize EEPROM with predefined size
-  pictureNumber = EEPROM.readLong(0) + 1;
+  pictureNumber++;
+
+  bool converted = frame2bmp(fb, &bmp_buf, &bmp_buf_len);
+  esp_camera_fb_return(fb);
 
   // Path where new picture will be saved in SD Card
-  String path = "/picture" + String(pictureNumber) + ".jpg";
+  String path = "/picture" + String(pictureNumber) + ".bmp";
 
   fs::FS &fs = SD_MMC;
   Serial.printf("Picture file name: %s\n", path.c_str());
@@ -185,13 +147,11 @@ void takeAndSavePicture()
   }
   else
   {
-    file.write(fb->buf, fb->len); // payload (image), payload length
+    file.write(bmp_buf, bmp_buf_len); // payload (image), payload length
     Serial.printf("Saved file to path: %s\n", path.c_str());
-    EEPROM.writeLong(0, pictureNumber);
-    EEPROM.commit();
   }
   file.close();
-  esp_camera_fb_return(fb);
+  free(bmp_buf);
 }
 
 float *takeAndPredictPicture()
@@ -209,15 +169,10 @@ float *takeAndPredictPicture()
   float *results = runPrediction(fb->buf, fb->len);
   Serial.println("I've got back a prediction");
 
-  writePredictionFrameTo16BitBuffer(fb->buf, fb->len, tftBuffer);
+  //writePredictionFrameTo16BitBuffer(fb->buf, fb->len, tftBuffer);
 
-  Serial.println("has written the to the tftBuffer");
-  // for (int i = 0; i < 9600; i++)
-  // {
-  //   tftBuffer[i] = 0xF7BE;
-  // }
-
-  tft.pushImage(120 - 80, 0, 160, 60, tftBuffer);
+  //Serial.println("has written the to the tftBuffer");
+  //tft.pushImage(120 - 80, 0, 160, 60, tftBuffer);
 
   esp_camera_fb_return(fb);
   return results;
@@ -225,17 +180,17 @@ float *takeAndPredictPicture()
 
 void loop()
 {
-  // takeAndSavePicture();
-
-  //Measure time to clear screen
-  //drawTime = millis();
-  tft.fillScreen(TFT_BLACK);
-  //drawTime = millis() - drawTime;
-  tft.setTextColor(TFT_WHITE, TFT_BLACK);
-  //tft.drawNumber(drawTime, 10, 100, 4);
-  //delay(1000);
+  if (hasSDCard)
+  {
+    takeAndSavePicture();
+    delay(500);
+    return;
+  }
 
   float *results = takeAndPredictPicture();
+
+  tft.fillScreen(TFT_BLACK);
+  tft.setTextColor(TFT_WHITE, TFT_BLACK);
 
   int most_likely_drawer = -1;
   float max_value_so_far = 0.01f;
@@ -249,8 +204,14 @@ void loop()
       most_likely_drawer = i;
     }
   }
+
+  int results_x = 120 - (getResultsTotalWidth() / 2);
+  int results_y = 240 - getResultsTotalHeight();
+
+  drawDrawersForResults(results_x, results_y, results, tft);
+
   Serial.println("most_likely_drawer");
   Serial.println(most_likely_drawer);
   tft.drawNumber(most_likely_drawer, 100, 80, 1);
-  delay(10000);
+  delay(1000);
 }
