@@ -212,6 +212,7 @@ void loop()
 
   Serial.println("most_likely_drawer");
   Serial.println(most_likely_drawer);
-  tft.drawNumber(most_likely_drawer, 100, 80, 1);
-  delay(1000);
+
+  tft.drawNumber(most_likely_drawer, 100, 80, 4);
+  delay((most_likely_drawer > 0) ? 0 : 1000);
 }

@@ -56,13 +56,14 @@ void setupModel()
 
   Serial.println("Created model...");
 
-  static tflite::MicroMutableOpResolver<6> micro_mutable_op_resolver;
+  static tflite::MicroMutableOpResolver<7> micro_mutable_op_resolver;
   micro_mutable_op_resolver.AddConv2D();
   micro_mutable_op_resolver.AddMaxPool2D();
   micro_mutable_op_resolver.AddQuantize();
   micro_mutable_op_resolver.AddReshape();
   micro_mutable_op_resolver.AddFullyConnected();
   micro_mutable_op_resolver.AddDequantize();
+  micro_mutable_op_resolver.AddSoftmax();
 
   // Build an interpreter to run the model with.
 
