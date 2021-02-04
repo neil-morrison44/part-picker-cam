@@ -5,17 +5,13 @@
 #include "soc/soc.h"          // Disable brownour problems
 #include "soc/rtc_cntl_reg.h" // Disable brownour problems
 #include "driver/rtc_io.h"
-#include <EEPROM.h> // read and write from flash memory
-#include <WiFi.h>
 
 #include "predict.h"
 #include "ui.h"
+#include "part_database.h"
 
 #include <TFT_eSPI.h> // Hardware-specific library
 #include <SPI.h>
-
-// define the number of bytes you want to access
-#define EEPROM_SIZE 4
 
 // Pin definition for CAMERA_MODEL_AI_THINKER
 #define PWDN_GPIO_NUM 32
@@ -115,6 +111,9 @@ void setup()
     tft.begin();
     tft.setRotation(3);
     tft.setSwapBytes(true);
+    tft.setTextColor(TFT_WHITE, TFT_BLACK);
+
+    setupEEPROMAndWiFi();
   }
 }
 
@@ -189,15 +188,11 @@ void loop()
 
   float *results = takeAndPredictPicture();
 
-  tft.fillScreen(TFT_BLACK);
-  tft.setTextColor(TFT_WHITE, TFT_BLACK);
-
   int most_likely_drawer = -1;
   float max_value_so_far = 0.01f;
 
   for (int i = 0; i < 40; i++)
   {
-    /* code */
     if (results[i] > max_value_so_far)
     {
       max_value_so_far = results[i];
@@ -208,11 +203,15 @@ void loop()
   int results_x = 120 - (getResultsTotalWidth() / 2);
   int results_y = 240 - getResultsTotalHeight();
 
+  tft.fillScreen(TFT_BLACK);
+
   drawDrawersForResults(results_x, results_y, results, tft);
 
-  Serial.println("most_likely_drawer");
-  Serial.println(most_likely_drawer);
-
-  tft.drawNumber(most_likely_drawer, 100, 80, 4);
+  tft.drawString(getWiFiStatus(), 0, 0);
+  // tft.drawNumber(most_likely_drawer, 100, 80, 4);
+  if (most_likely_drawer > 0)
+  {
+    tft.drawString(getPartText(most_likely_drawer), 10, 50, 4);
+  }
   delay((most_likely_drawer > 0) ? 0 : 1000);
 }
