@@ -37,8 +37,6 @@ void setupModel()
   uint8_t *tensor_arena;
   tensor_arena = (uint8_t *)heap_caps_malloc(TENSOR_ARENA_SIZE * 4, MALLOC_CAP_SPIRAM);
 
-  Serial.println("About to try loading model...");
-
   tflite::MicroErrorReporter micro_error_reporter;
   error_reporter = &micro_error_reporter;
 
@@ -53,8 +51,6 @@ void setupModel()
                          "to supported version %d.\n",
                          model->version(), TFLITE_SCHEMA_VERSION);
   }
-
-  Serial.println("Created model...");
 
   static tflite::MicroMutableOpResolver<7> micro_mutable_op_resolver;
   micro_mutable_op_resolver.AddConv2D();
@@ -71,7 +67,6 @@ void setupModel()
                                                      TENSOR_ARENA_SIZE, error_reporter);
   interpreter = &static_interpreter;
 
-  Serial.println("Allocating Tensors");
   tflite_status = interpreter->AllocateTensors();
   if (tflite_status != kTfLiteOk)
   {
@@ -84,23 +79,6 @@ void setupModel()
 
   // Obtain a pointer to the model's input tensor
   TfLiteTensor *input = interpreter->input(0);
-
-  Serial.println("Model");
-  Serial.println(input->dims->size);
-  Serial.println(input->type);
-
-  // Get information about the memory area to use for the model's input.
-  // model_input = interpreter->input(0);
-  // if ((model_input->dims->size != 4) || (model_input->dims->data[0] != 1) ||
-  //     (model_input->dims->data[1] != kFeatureSliceCount) ||
-  //     (model_input->dims->data[2] != kFeatureSliceSize) ||
-  //     (model_input->type != kTfLiteUInt8))
-  // {
-  //   error_reporter->Report("Bad input tensor parameters in model");
-  //   return;
-  // }
-
-  Serial.println("model loaded!");
 }
 
 float *runPrediction(uint8_t *framebuffer, size_t length)
@@ -115,7 +93,6 @@ float *runPrediction(uint8_t *framebuffer, size_t length)
   for (size_t i = 0; i < length; i++)
   {
     model_input->data.f[i] = (1.0f / 255) * framebuffer[i];
-    //model_input->data.f[i] = framebuffer[i];
     if (i % 3 == 0)
     {
       redSum += framebuffer[i];
@@ -123,9 +100,7 @@ float *runPrediction(uint8_t *framebuffer, size_t length)
       greenSum += framebuffer[i + 2];
     }
   }
-  // Serial.println("AverageColor: ");
-  // printf("rgb(%d, %d, %d)\n", redSum / (160 * 60), blueSum / (160 * 60), greenSum / (160 * 60));
-  // Serial.println("");
+
   tflite_status = interpreter->Invoke();
   if (tflite_status != kTfLiteOk)
   {
@@ -133,15 +108,10 @@ float *runPrediction(uint8_t *framebuffer, size_t length)
     return prediction;
   }
 
-  Serial.println("I think I've got an output");
-  Serial.println("");
   for (size_t i = 0; i < 40; i++)
   {
-    Serial.print(model_output->data.f[i]);
     prediction[i] = model_output->data.f[i];
-    Serial.print(", ");
   }
-  Serial.println("");
 
   return prediction;
 }
@@ -169,6 +139,4 @@ void writePredictionFrameTo16BitBuffer(uint8_t *framebuffer, size_t length, uint
       }
     }
   }
-  Serial.println("Over By:");
-  Serial.println(iOver);
 }

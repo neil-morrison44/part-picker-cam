@@ -1,3 +1,5 @@
+#define DEBUG_MODE false
+
 #include "esp_camera.h"
 #include "Arduino.h"
 #include "FS.h"               // SD Card ESP32
@@ -32,41 +34,45 @@
 #define HREF_GPIO_NUM 23
 #define PCLK_GPIO_NUM 22
 
+#define BACKLIGHT_PIN 1
+#define INACTION_TIMEOUT_FRAMES 10
+
 // enough to test if it fits in flash...
 
 // WiFiClient espClient;
 TFT_eSPI tft = TFT_eSPI();
 
-static uint16_t tftBuffer[160 * 60] = {0};
+// static uint16_t tftBuffer[160 * 60] = {0};
 
 uint8_t *bmp_buf = nullptr;
 size_t bmp_buf_len = 0;
 
-// But move these elsewhere
-
 long pictureNumber = 0;
-
 bool hasSDCard = false;
+int noInteractionFrames = 0;
 
 void setup()
 {
   WRITE_PERI_REG(RTC_CNTL_BROWN_OUT_REG, 0); //disable brownout detector
 
-  Serial.begin(115200);
-  delay(1000);
-  //Serial.setDebugOutput(true);
-  // Serial.println();
+  if (DEBUG_MODE)
+  {
+    Serial.begin(115200);
+    delay(1000);
+    Serial.println("Starting SD Card");
+  }
 
-  Serial.println("Starting SD Card");
   if (SD_MMC.begin("/sdcard", true))
   {
-    Serial.println("SD Card Mounted");
+    if (DEBUG_MODE)
+      Serial.println("SD Card Mounted");
     // no SD Card - go into prediciton & display mode
     hasSDCard = true;
   }
   else
   {
-    Serial.println("No SD Card detected");
+    if (DEBUG_MODE)
+      Serial.println("No SD Card detected");
     hasSDCard = false;
     delay(1000);
   }
@@ -97,11 +103,13 @@ void setup()
   config.fb_count = hasSDCard ? 2 : 1;
 
   // Init Camera
-  Serial.println("init camera?");
+  if (DEBUG_MODE)
+    Serial.println("init camera?");
   esp_err_t err = esp_camera_init(&config);
   if (err != ESP_OK)
   {
-    Serial.printf("Camera init failed with error 0x%x", err);
+    if (DEBUG_MODE)
+      Serial.printf("Camera init failed with error 0x%x", err);
     return;
   }
 
@@ -112,8 +120,9 @@ void setup()
     tft.setRotation(3);
     tft.setSwapBytes(true);
     tft.setTextColor(TFT_WHITE, TFT_BLACK);
-
     setupEEPROMAndWiFi();
+    pinMode(BACKLIGHT_PIN, OUTPUT);
+    digitalWrite(BACKLIGHT_PIN, HIGH);
   }
 }
 
@@ -125,7 +134,8 @@ void takeAndSavePicture()
   fb = esp_camera_fb_get();
   if (!fb)
   {
-    Serial.println("Camera capture failed");
+    if (DEBUG_MODE)
+      Serial.println("Camera capture failed");
     return;
   }
   pictureNumber++;
@@ -137,17 +147,20 @@ void takeAndSavePicture()
   String path = "/picture" + String(pictureNumber) + ".bmp";
 
   fs::FS &fs = SD_MMC;
-  Serial.printf("Picture file name: %s\n", path.c_str());
+  if (DEBUG_MODE)
+    Serial.printf("Picture file name: %s\n", path.c_str());
 
   File file = fs.open(path.c_str(), FILE_WRITE);
   if (!file)
   {
-    Serial.println("Failed to open file in writing mode");
+    if (DEBUG_MODE)
+      Serial.println("Failed to open file in writing mode");
   }
   else
   {
     file.write(bmp_buf, bmp_buf_len); // payload (image), payload length
-    Serial.printf("Saved file to path: %s\n", path.c_str());
+    if (DEBUG_MODE)
+      Serial.printf("Saved file to path: %s\n", path.c_str());
   }
   file.close();
   free(bmp_buf);
@@ -161,12 +174,14 @@ float *takeAndPredictPicture()
   fb = esp_camera_fb_get();
   if (!fb)
   {
-    Serial.println("Camera capture failed");
+    if (DEBUG_MODE)
+      Serial.println("Camera capture failed");
     return {0};
   }
 
   float *results = runPrediction(fb->buf, fb->len);
-  Serial.println("I've got back a prediction");
+  if (DEBUG_MODE)
+    Serial.println("I've got back a prediction");
 
   //writePredictionFrameTo16BitBuffer(fb->buf, fb->len, tftBuffer);
 
@@ -185,6 +200,7 @@ void loop()
     delay(500);
     return;
   }
+  runOTALoop();
 
   float *results = takeAndPredictPicture();
 
@@ -200,6 +216,19 @@ void loop()
     }
   }
 
+  if (most_likely_drawer < 1)
+  {
+    if (noInteractionFrames < INACTION_TIMEOUT_FRAMES)
+    {
+      noInteractionFrames++;
+    }
+  }
+  else
+  {
+    noInteractionFrames = 0;
+  }
+
+  digitalWrite(BACKLIGHT_PIN, noInteractionFrames != INACTION_TIMEOUT_FRAMES ? HIGH : LOW);
   int results_x = 120 - (getResultsTotalWidth() / 2);
   int results_y = 240 - getResultsTotalHeight();
 
