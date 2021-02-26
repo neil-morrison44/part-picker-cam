@@ -240,7 +240,17 @@ void loop()
   // tft.drawNumber(most_likely_drawer, 100, 80, 4);
   if (most_likely_drawer > 0)
   {
-    tft.drawString(getPartText(most_likely_drawer), 10, 50, 4);
+    String text = getPartText(most_likely_drawer);
+    int newLineIndex = text.indexOf("\n");
+    if (newLineIndex == -1)
+    {
+      tft.drawString(text, 10, 50, 4);
+    }
+    else
+    {
+      tft.drawString(text.substring(0, newLineIndex), 10, 50, 4);
+      tft.drawString(text.substring(newLineIndex), 10, 76, 4);
+    }
   }
   delay((most_likely_drawer > 0) ? 0 : 1000);
 }
